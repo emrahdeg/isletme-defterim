@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İşletme Defteri - Kesin Çözüm</title>
+    
+    <style>
+        :root { --bg: #f4f7f6; --cont: white; --txt: #333; --brd: #eee; --head: #f8f9fa; --sum-bg: #333; --sum-txt: #fff; }
+        [data-theme="dark"] { --bg: #18191a; --cont: #242526; --txt: #e4e6eb; --brd: #3a3b3c; --head: #3a3b3c; --sum-bg: #000; --sum-txt: #4ade80; }
+        
+        body { font-family: 'Segoe UI', sans-serif; margin: 20px; background-color: var(--bg); color: var(--txt); transition: 0.2s; }
+        .container { max-width: 950px; margin: auto; background: var(--cont); padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; }
+        
+        .header-actions { position: absolute; top: 25px; right: 25px; display: flex; gap: 8px; align-items: center; }
+        .btn-exp { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; color: white; font-weight: bold; font-size: 13px; }
+        .btn-xls { background: #1d6f42; } .btn-pdf { background: #e02424; }
+        
+        /* Tema Switch */
+        .sw { width: 34px; height: 18px; position: relative; display: inline-block; margin-left: 5px; }
+        .sw input { display:none; }
+        .sld { background:#ccc; position:absolute; top:0; left:0; right:0; bottom:0; cursor:pointer; border-radius:18px; transition:.4s; }
+        .sld:before { background:white; content:""; height:12px; width:12px; left:3px; bottom:3px; position:absolute; transition:.4s; border-radius:50%; }
+        input:checked + .sld { background:#1a73e8; }
+        input:checked + .sld:before { transform:translateX(16px); }
+
+        h1 { text-align: center; margin-bottom: 25px; }
+        
+        /* Izgara Düzeni Düzeltildi */
+        .entry-grid { display: grid; grid-template-columns: 120px 1fr 120px 120px 80px; gap: 10px; margin-bottom: 25px; align-items: end; }
+        .input-group { display: flex; flex-direction: column; }
+        label { font-size: 11px; font-weight: bold; margin-bottom: 5px; opacity: 0.7; overflow: hidden; white-space: nowrap; }
+        input { padding: 10px; border: 2px solid var(--brd); border-radius: 8px; outline: none; background: var(--cont); color: var(--txt); width: 100%; box-sizing: border-box; }
+        .in-exp { border-left: 4px solid #dc3545; } .in-inc { border-left: 4px solid #28a745; }
+        
+        .add-btn { width: 100%; padding: 11px; background: #1a73e8; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--brd); }
+        th { background: var(--head); font-size: 13px; }
+        .txt-exp { color: #ff6b6b; font-weight: bold; } .txt-inc { color: #51cf66; font-weight: bold; }
+        
+        .sum-box { margin-top: 20px; padding: 20px; background: var(--sum-bg); border-radius: 10px; text-align: right; font-size: 1.4em; color: var(--sum-txt); font-weight: bold; }
+        .acts { display: flex; gap: 10px; } .acts button { cursor: pointer; border: none; background: none; font-weight: 600; font-size: 13px; }
+        .e-btn { color: #1a73e8; } .d-btn { color: #dc3545; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-actions">
+        <button class="btn-exp btn-xls" onclick="loadAndExport('xlsx')">Excel</button>
+        <button class="btn-exp btn-pdf" onclick="loadAndExport('pdf')">PDF</button>
+        <label class="sw"><input type="checkbox" id="tgl"><div class="sld"></div></label>
+    </div>
+
+    <h1>İşletme Defteri</h1>
+    
+    <div class="entry-grid">
+        <div class="input-group"><label>Tarih</label><input type="text" id="date" maxlength="10" onkeydown="hEnt(event, 'desc')"></div>
+        <div class="input-group"><label>Açıklama</label><input type="text" id="desc" style="text-transform: capitalize;" onkeydown="hEnt(event, 'expense')"></div>
+        <div class="input-group"><label style="color:#dc3545">Gider (-)</label><input type="number" id="expense" class="in-exp" onkeydown="hEnt(event, 'income')"></div>
+        <div class="input-group"><label style="color:#28a745">Gelir (+)</label><input type="number" id="income" class="in-inc" onkeydown="hEnt(event, 'sub')"></div>
+        <button class="add-btn" onclick="pEntry()">Ekle</button>
+    </div>
+
+    <table id="table">
+        <thead><tr><th>Tarih</th><th>Açıklama</th><th>Gider</th><th>Gelir</th><th>İşlem</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <div class="sum-box">Bakiye: <span id="total">0.00</span> TL</div>
+</div>
+
+<script>
+    let data = JSON.parse(localStorage.getItem('defter')) || [];
+
+    // Kütüphane Yükleyici ve Çalıştırıcı
+    function loadAndExport(type) {
+        if (data.length === 0) return alert("Dışa aktarılacak veri yok!");
+        
+        if (type === 'xlsx') {
+            const s = document.createElement('script');
+            s.src = "https://sheetjs.com";
+            s.onload = () => {
+                const ws = XLSX.utils.json_to_sheet(data.map(e => ({ Tarih: e.d, Açıklama: e.de, Gider: e.ex, Gelir: e.in })));
+                const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Defter");
+                XLSX.writeFile(wb, "Defter.xlsx");
+            };
+            document.head.appendChild(s);
+        } else {
+            const s1 = document.createElement('script'); s1.src = "https://cloudflare.com";
+            const s2 = document.createElement('script'); s2.src = "https://cloudflare.com";
+            document.head.appendChild(s1);
+            s1.onload = () => {
+                document.head.appendChild(s2);
+                s2.onload = () => {
+                    const doc = new window.jspdf.jsPDF();
+                    doc.text("Isletme Raporu", 14, 15);
+                    doc.autoTable({ head: [['Tarih', 'Aciklama', 'Gider', 'Gelir']], body: data.map(e => [e.d, e.de, e.ex.toFixed(2), e.in.toFixed(2)]), startY: 20 });
+                    doc.save("Rapor.pdf");
+                };
+            };
+        }
+    }
+
+    window.onload = () => {
+        if (localStorage.getItem('th') === 'dark') { document.documentElement.setAttribute('data-theme', 'dark'); document.getElementById('tgl').checked = true; }
+        document.getElementById('date').value = new Date().toLocaleDateString('tr-TR');
+        render(); document.getElementById('date').focus(); document.getElementById('date').select();
+    };
+
+    document.getElementById('tgl').onchange = (e) => {
+        const th = e.target.checked ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', th);
+        localStorage.setItem('th', th);
+    };
+
+    function hEnt(e, next) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (e.target.id === 'date' && e.target.value.length <= 2 && e.target.value.length > 0) {
+                const n = new Date(); e.target.value = e.target.value.padStart(2,'0') + '/' + String(n.getMonth()+1).padStart(2,'0') + '/' + n.getFullYear();
+            }
+            if (next === 'sub') pEntry();
+            else { const t = document.getElementById(next); t.focus(); t.select(); }
+        }
+    }
+
+    document.getElementById('date').oninput = (e) => {
+        let v = e.target.value.replace(/\D/g, '').slice(0, 8);
+        if (v.length >= 5) e.target.value = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+        else if (v.length >= 3) e.target.value = v.slice(0, 2) + '/' + v.slice(2);
+        else e.target.value = v;
+    };
+
+    function pEntry() {
+        const d = document.getElementById('date').value, de = document.getElementById('desc').value;
+        const ex = parseFloat(document.getElementById('expense').value) || 0, inc = parseFloat(document.getElementById('income').value) || 0;
+        if (d.length < 10 || !de || (ex === 0 && inc === 0)) return alert("Eksik bilgi!");
+        const p = d.split('/');
+        data.push({ id: Date.now(), d, ts: new Date(p[2], p[1]-1, p[0]).getTime(), de: de.charAt(0).toUpperCase() + de.slice(1), ex, in: inc });
+        save(); document.getElementById('desc').value = ''; document.getElementById('expense').value = ''; document.getElementById('income').value = '';
+        document.getElementById('date').focus(); document.getElementById('date').select();
+    }
+
+    function save() { data.sort((a, b) => b.ts - a.ts); localStorage.setItem('defter', JSON.stringify(data)); render(); }
+
+    function render() {
+        const tb = document.querySelector('#table tbody'); tb.innerHTML = '';
+        let tot = data.reduce((a, c) => a + c.in - c.ex, 0);
+        data.forEach(i => {
+            const r = tb.insertRow();
+            r.insertCell(0).innerText = i.d; r.insertCell(1).innerText = i.de;
+            const cE = r.insertCell(2); cE.innerText = i.ex ? "-" + i.ex.toLocaleString('tr-TR') : "-"; cE.className = "txt-exp";
+            const cI = r.insertCell(3); cI.innerText = i.in ? "+" + i.in.toLocaleString('tr-TR') : "-"; cI.className = "txt-inc";
+            r.insertCell(4).innerHTML = `<div class="acts"><button class="e-btn" onclick="edit(${i.id})">Düzenle</button><button class="d-btn" onclick="del(${i.id})">Sil</button></div>`;
+        });
+        document.getElementById('total').innerText = tot.toLocaleString('tr-TR', {minimumFractionDigits: 2});
+    }
+
+    function del(id) { if(confirm("Silinsin mi?")) { data = data.filter(e => e.id !== id); save(); } }
+    function edit(id) {
+        const i = data.find(e => e.id === id);
+        document.getElementById('date').value = i.d; document.getElementById('desc').value = i.de;
+        document.getElementById('expense').value = i.ex || ''; document.getElementById('income').value = i.in || '';
+        data = data.filter(e => e.id !== id); save();
+        document.getElementById('date').focus(); document.getElementById('date').select();
+    }
+</script>
+</body>
+</html>
